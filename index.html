@@ -1,0 +1,323 @@
+import { useState, useEffect } from "react";
+import { Loader, Shuffle, ChevronDown, ChevronUp, Star, Trash2, BookMarked } from "lucide-react";
+
+const WordFusionApp = () => {
+  const [word1, setWord1] = useState("");
+  const [word2, setWord2] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [ideas, setIdeas] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [expandedIdea, setExpandedIdea] = useState(null);
+  const [actionPlans, setActionPlans] = useState({});
+  const [loadingPlan, setLoadingPlan] = useState(null);
+  const [favorites, setFavorites] = useState([]);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [expandedFav, setExpandedFav] = useState(null);
+
+  const wordBank = [
+    "robot","digital","cyber","quantum","virtual","neural","smart","nano","bio","eco",
+    "ocean","forest","mountain","solar","lunar","crystal","thunder","wind","fire","ice",
+    "flying","dancing","spinning","glowing","flowing","racing","climbing","diving","jumping","singing",
+    "mirror","door","bridge","tower","garden","library","kitchen","studio","workshop","laboratory",
+    "invisible","magical","ancient","modern","tiny","giant","silent","colorful","transparent","flexible",
+    "dragon","phoenix","wolf","eagle","dolphin","butterfly","tiger","lion","bear","fox",
+    "midnight","dawn","sunset","eternal","instant","future","vintage","timeless","rapid","slow",
+    "glass","metal","wood","stone","fabric","paper","plastic","ceramic","diamond","gold"
+  ];
+
+  const getRandomWord = () => wordBank[Math.floor(Math.random() * wordBank.length)];
+
+  const categories = [
+    { id: "business", name: "Business", icon: "💼" },
+    { id: "writing", name: "Creative writing", icon: "✍️" },
+    { id: "products", name: "Product ideas", icon: "📦" },
+    { id: "solutions", name: "Problem solving", icon: "🔧" },
+    { id: "art", name: "Art & design", icon: "🎨" },
+    { id: "stories", name: "Story concepts", icon: "✨" },
+    { id: "games", name: "Game concepts", icon: "🎮" },
+    { id: "education", name: "Education", icon: "📚" },
+    { id: "food", name: "Food & recipes", icon: "🍽️" },
+    { id: "fashion", name: "Fashion & style", icon: "👗" },
+    { id: "music", name: "Music & sound", icon: "🎵" },
+    { id: "travel", name: "Travel & adventure", icon: "🌍" },
+  ];
+
+  const categoryContext = {
+    business: "business opportunities, startups, or entrepreneurial ventures",
+    writing: "creative writing prompts, story ideas, or narrative concepts",
+    products: "new product concepts, improvements, or market opportunities",
+    art: "artistic projects, design concepts, or creative visual ideas",
+    solutions: "practical solutions to everyday problems or challenges",
+    stories: "engaging story concepts, plot ideas, or narrative themes",
+    games: "video game, board game, or interactive game concepts",
+    education: "educational tools, curricula, or learning experiences",
+    food: "unique recipes, food products, or culinary experiences",
+    fashion: "clothing designs, accessories, or style concepts",
+    music: "musical compositions, instruments, or sound experiences",
+    travel: "travel experiences, destinations, or adventure concepts",
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await window.storage.get("idea-spark-favorites");
+        if (result?.value) setFavorites(JSON.parse(result.value));
+      } catch (_) {}
+    })();
+  }, []);
+
+  const saveFavorites = async (updated) => {
+    try {
+      await window.storage.set("idea-spark-favorites", JSON.stringify(updated));
+    } catch (_) {}
+    setFavorites(updated);
+  };
+
+  const isFavorited = (title) => favorites.some(f => f.title === title);
+
+  const toggleFavorite = (idea, plan = null) => {
+    const catName = categories.find(c => c.id === selectedCategory)?.name || selectedCategory;
+    if (isFavorited(idea.title)) {
+      saveFavorites(favorites.filter(f => f.title !== idea.title));
+    } else {
+      saveFavorites([{
+        id: Date.now(),
+        title: idea.title,
+        description: idea.description,
+        category: catName,
+        words: `${word1} + ${word2}`,
+        actionPlan: plan || null,
+        savedAt: new Date().toLocaleDateString("de-DE"),
+      }, ...favorites]);
+    }
+  };
+
+  const deleteFavorite = (id) => saveFavorites(favorites.filter(f => f.id !== id));
+
+  const generateIdeas = async () => {
+    if (!word1.trim() || !word2.trim() || !selectedCategory) return;
+    setIsLoading(true);
+    setIdeas("");
+    setActionPlans({});
+    setExpandedIdea(null);
+    try {
+      const prompt = `Generate 5-7 creative and practical ideas that combine the words "${word1}" and "${word2}" for ${categoryContext[selectedCategory]}.
+Make the ideas innovative, practical, and varied in scope.
+Format your response as a numbered list where each entry follows this EXACT format:
+"1. [Idea Title] - [Detailed explanation in 1-2 sentences]"
+Make sure every idea has both a title AND a description separated by " - "`;
+      const response = await window.claude.complete(prompt);
+      setIdeas(response);
+    } catch (e) {
+      setIdeas("Sorry, there was an error generating ideas. Please try again!");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const generateActionPlan = async (idea, index) => {
+    if (actionPlans[index]) {
+      setExpandedIdea(expandedIdea === index ? null : index);
+      return;
+    }
+    setLoadingPlan(index);
+    setExpandedIdea(index);
+    try {
+      const catName = categories.find(c => c.id === selectedCategory)?.name || selectedCategory;
+      const prompt = `For the following idea in the category "${catName}", create a concise but practical action plan.
+Idea: "${idea.title} - ${idea.description}"
+Structure your response with these sections:
+1. **Erste Schritte** (3 konkrete erste Maßnahmen)
+2. **Benötigte Ressourcen** (Tools, Skills, Budget-Schätzung)
+3. **Zeitplan** (realistischer Rahmen in Phasen)
+4. **Größte Herausforderungen** (und wie man sie überwindet)
+5. **Nächste Aktion** (der allererste Schritt, den man heute tun kann)
+Keep it actionable, specific and motivating. Use German language.`;
+      const response = await window.claude.complete(prompt);
+      setActionPlans(prev => ({ ...prev, [index]: response }));
+    } catch (e) {
+      setActionPlans(prev => ({ ...prev, [index]: "Fehler beim Laden des Aktionsplans." }));
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const parseIdeas = (raw) =>
+    raw.split("\n").filter(l => l.trim() && /^\d+\./.test(l.trim())).map(l => {
+      const clean = l.replace(/^\d+\.\s*/, "").trim();
+      if (clean.includes(" - ")) {
+        const [title, ...rest] = clean.split(" - ");
+        return { title: title.replace(/^["']|["']$/g, ""), description: rest.join(" - ") };
+      }
+      return { title: clean, description: "" };
+    });
+
+  const renderPlanText = (text) =>
+    text.split("\n").map((line, i) => {
+      const html = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      return <p key={i} className="mb-1 text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: html || "&nbsp;" }} />;
+    });
+
+  const parsedIdeas = ideas ? parseIdeas(ideas) : [];
+
+  return (
+    <div className="min-h-screen bg-gray-100 text-gray-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl">
+        <div className="text-center mb-10">
+          <h1 className="text-5xl font-black text-gray-900 mb-4">Idea Spark</h1>
+          <p className="text-xl text-gray-400 font-medium">Two words. Endless possibilities.</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-3 mb-6 bg-white rounded-2xl p-2 shadow-md">
+          <button onClick={() => setShowFavorites(false)}
+            className={`flex-1 py-4 rounded-xl font-black text-base transition-all flex items-center justify-center gap-2 ${!showFavorites ? "bg-purple-500 text-white shadow-lg scale-105" : "text-gray-400 hover:text-purple-400"}`}>
+            💡 Ideen generieren
+          </button>
+          <button onClick={() => setShowFavorites(true)}
+            className={`flex-1 py-4 rounded-xl font-black text-base transition-all flex items-center justify-center gap-2 ${showFavorites ? "bg-purple-500 text-white shadow-lg scale-105" : "text-gray-400 hover:text-purple-400"}`}>
+            <BookMarked className="w-5 h-5" />
+            Meine Favoriten
+            {favorites.length > 0 && (
+              <span className={`text-xs px-2 py-1 rounded-full font-black ${showFavorites ? "bg-white text-purple-500" : "bg-purple-500 text-white"}`}>
+                {favorites.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="bg-white rounded-3xl p-8 text-black">
+          {!showFavorites ? (
+            <>
+              <div className="mb-8">
+                <div className="grid grid-cols-2 gap-6">
+                  {[{ val: word1, set: setWord1, label: "WORD 1", ph: "ocean" }, { val: word2, set: setWord2, label: "WORD 2", ph: "robot" }].map(({ val, set, label, ph }) => (
+                    <div key={label} className="bg-gray-100 rounded-2xl p-6 relative">
+                      <label className="block text-sm font-bold mb-3 text-gray-500 uppercase tracking-wide">{label}</label>
+                      <input type="text" value={val} onChange={e => set(e.target.value)} placeholder={ph}
+                        className="w-full text-2xl font-bold bg-transparent border-none outline-none text-black placeholder-gray-400" />
+                      <button onClick={() => set(getRandomWord())} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-purple-500 transition-colors">
+                        <Shuffle className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-8">
+                <div className="grid grid-cols-4 gap-4">
+                  {categories.map(cat => (
+                    <button key={cat.id} onClick={() => setSelectedCategory(cat.id)}
+                      className={`p-4 rounded-2xl transition-all duration-200 transform hover:scale-105 ${selectedCategory === cat.id ? "bg-purple-500 text-white shadow-lg" : "bg-gray-100 text-black hover:bg-gray-200"}`}>
+                      <div className="text-2xl mb-1">{cat.icon}</div>
+                      <div className="font-bold text-sm">{cat.name}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={generateIdeas}
+                disabled={isLoading || !word1.trim() || !word2.trim() || !selectedCategory}
+                className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 disabled:text-gray-500 disabled:opacity-50 text-white py-6 rounded-2xl text-xl font-black transition-all duration-200 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed flex items-center justify-center gap-3 mb-8">
+                {isLoading ? <><Loader className="w-6 h-6 animate-spin" /> Generating ideas</> : "Generate ideas"}
+              </button>
+
+              {parsedIdeas.length > 0 && (
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-2xl font-black text-purple-500">Your ideas</h3>
+                    <button onClick={() => { setIdeas(""); setActionPlans({}); setExpandedIdea(null); }}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-bold transition-colors text-gray-700">
+                      Reset
+                    </button>
+                  </div>
+                  <div className="grid gap-4">
+                    {parsedIdeas.map((idea, index) => (
+                      <div key={index} className="bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-200">
+                        <div className="p-5 flex items-start gap-4">
+                          <div className="w-8 h-8 bg-purple-500 text-white rounded-full flex items-center justify-center font-black text-sm flex-shrink-0">
+                            {index + 1}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-lg font-black text-purple-700 mb-1">{idea.title}</h4>
+                            {idea.description && <p className="text-gray-700 text-sm leading-relaxed">{idea.description}</p>}
+                          </div>
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button onClick={() => toggleFavorite(idea, actionPlans[index] || null)}
+                              className={`p-2 rounded-xl transition-all ${isFavorited(idea.title) ? "text-yellow-500 bg-yellow-50" : "text-gray-300 hover:text-yellow-400 hover:bg-yellow-50"}`}>
+                              <Star className="w-5 h-5" fill={isFavorited(idea.title) ? "currentColor" : "none"} />
+                            </button>
+                            <button onClick={() => generateActionPlan(idea, index)} disabled={loadingPlan === index}
+                              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold transition-all ${expandedIdea === index ? "bg-purple-500 text-white" : "bg-white text-purple-600 border border-purple-300 hover:bg-purple-500 hover:text-white"}`}>
+                              {loadingPlan === index ? <Loader className="w-4 h-4 animate-spin" /> : expandedIdea === index ? <><ChevronUp className="w-4 h-4" />Plan</> : <><ChevronDown className="w-4 h-4" />Ausarbeiten</>}
+                            </button>
+                          </div>
+                        </div>
+                        {expandedIdea === index && (
+                          <div className="border-t border-purple-200 bg-white px-6 py-5">
+                            {loadingPlan === index
+                              ? <div className="flex items-center gap-2 text-purple-500"><Loader className="w-4 h-4 animate-spin" /><span className="text-sm font-medium">Aktionsplan wird erstellt…</span></div>
+                              : actionPlans[index] ? renderPlanText(actionPlans[index]) : null}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div>
+              <h3 className="text-2xl font-black text-purple-500 mb-6">⭐ Gespeicherte Favoriten</h3>
+              {favorites.length === 0 ? (
+                <div className="text-center py-16 text-gray-400">
+                  <Star className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                  <p className="text-lg font-bold">Noch keine Favoriten gespeichert.</p>
+                  <p className="text-sm mt-2">Klicke beim Generieren auf den ⭐ Stern, um Ideen zu speichern.</p>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {favorites.map(fav => (
+                    <div key={fav.id} className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-200">
+                      <div className="p-5 flex items-start gap-4">
+                        <Star className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" fill="currentColor" />
+                        <div className="flex-1">
+                          <h4 className="text-lg font-black text-amber-700 mb-1">{fav.title}</h4>
+                          {fav.description && <p className="text-gray-700 text-sm leading-relaxed mb-2">{fav.description}</p>}
+                          <div className="flex gap-2 flex-wrap">
+                            <span className="text-xs bg-amber-100 text-amber-600 px-2 py-1 rounded-full font-bold">{fav.category}</span>
+                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">{fav.words}</span>
+                            <span className="text-xs text-gray-400">{fav.savedAt}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          {fav.actionPlan && (
+                            <button onClick={() => setExpandedFav(expandedFav === fav.id ? null : fav.id)}
+                              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold transition-all ${expandedFav === fav.id ? "bg-amber-400 text-white" : "bg-white text-amber-600 border border-amber-300 hover:bg-amber-400 hover:text-white"}`}>
+                              {expandedFav === fav.id ? <><ChevronUp className="w-4 h-4" />Plan</> : <><ChevronDown className="w-4 h-4" />Plan</>}
+                            </button>
+                          )}
+                          <button onClick={() => deleteFavorite(fav.id)}
+                            className="p-2 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-xl transition-all">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      {expandedFav === fav.id && fav.actionPlan && (
+                        <div className="border-t border-yellow-200 bg-white px-6 py-5">
+                          {renderPlanText(fav.actionPlan)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default WordFusionApp;
